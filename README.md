@@ -17,6 +17,12 @@ docker compose up --build
 http://localhost:8501
 ```
 
+同一局域网内的其他设备可通过运行主机的 IP 访问，例如：
+
+```text
+http://<主机IP>:8501
+```
+
 Compose 会启动两个服务：
 
 - `mysql`：MySQL 8 数据库，数据持久化在 `mysql_data` volume。
