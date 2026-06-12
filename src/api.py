@@ -30,6 +30,7 @@ app.add_middleware(
 
 
 class KeywordMatches(BaseModel):
+    table_matches: list[str] = Field(default_factory=list)
     field_matches: list[str] = Field(default_factory=list)
     value_matches: list[str] = Field(default_factory=list)
 

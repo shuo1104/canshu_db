@@ -146,6 +146,32 @@ def test_field_name_matching_is_case_insensitive_like_mysql_collation():
     assert field_matches == {"model": ["Model"]}
 
 
+def test_table_name_match_short_circuits_that_keyword():
+    where_clause, params, field_matches = build_keyword_conditions(
+        sample_mapping(),
+        ["设备"],
+        "fuzzy",
+        table_matches_by_keyword={"设备": ["设备参数"]},
+    )
+
+    assert where_clause == "1=1"
+    assert params == []
+    assert field_matches == {"设备": []}
+
+
+def test_table_name_and_value_search_filters_rows_in_that_table():
+    where_clause, params, field_matches = build_keyword_conditions(
+        sample_mapping(),
+        ["设备", "Pro2"],
+        "fuzzy",
+        table_matches_by_keyword={"设备": ["设备参数"], "Pro2": []},
+    )
+
+    assert where_clause == "1=1 AND (`c001` LIKE %s OR `c002` LIKE %s OR `c003` LIKE %s)"
+    assert params == ["%Pro2%", "%Pro2%", "%Pro2%"]
+    assert field_matches == {"设备": [], "Pro2": []}
+
+
 def test_field_name_match_short_circuits_that_keyword():
     where_clause, params, field_matches = build_keyword_conditions(
         sample_mapping(), ["型号", "Pro2"], "fuzzy"
@@ -195,8 +221,32 @@ def test_row_to_search_result_reports_field_and_value_matches():
         "未命名列3": "光强A",
     }
     assert result["matched_keywords"] == {
-        "型号": {"field_matches": ["型号", "型号_2"], "value_matches": []},
-        "Pro2": {"field_matches": [], "value_matches": ["型号"]},
+        "型号": {"table_matches": [], "field_matches": ["型号", "型号_2"], "value_matches": []},
+        "Pro2": {"table_matches": [], "field_matches": [], "value_matches": ["型号"]},
+    }
+
+
+def test_row_to_search_result_reports_table_name_matches():
+    mapping = sample_mapping()
+    _, _, field_matches = build_keyword_conditions(
+        mapping,
+        ["设备"],
+        "fuzzy",
+        table_matches_by_keyword={"设备": ["设备参数"]},
+    )
+
+    result = row_to_search_result(
+        table_meta=sample_table_meta(),
+        mapping=mapping,
+        row_dict={"id": 1, "c001": "Pro2", "c002": "材料参数", "c003": "光强A"},
+        keywords=["设备"],
+        mode="fuzzy",
+        field_matches_by_keyword=field_matches,
+        table_matches_by_keyword={"设备": ["设备参数"]},
+    )
+
+    assert result["matched_keywords"] == {
+        "设备": {"table_matches": ["设备参数"], "field_matches": [], "value_matches": []},
     }
 
 
@@ -214,7 +264,7 @@ def test_row_to_search_result_reports_case_insensitive_value_matches():
     )
 
     assert result["matched_keywords"] == {
-        "pro2": {"field_matches": [], "value_matches": ["Model"]},
+        "pro2": {"table_matches": [], "field_matches": [], "value_matches": ["Model"]},
     }
     assert result["matched_columns"] == ["Model"]
 
@@ -233,7 +283,7 @@ def test_exact_value_matching_is_case_insensitive_like_mysql_collation():
     )
 
     assert result["matched_keywords"] == {
-        "pro2": {"field_matches": [], "value_matches": ["Model"]},
+        "pro2": {"table_matches": [], "field_matches": [], "value_matches": ["Model"]},
     }
 
 
@@ -241,15 +291,15 @@ def test_extract_field_candidates_orders_by_frequency_then_first_seen():
     results = [
         {
             "row": {"型号": "Pro2", "光强": "A", "材料": "铝"},
-            "matched_keywords": {"Pro": {"field_matches": [], "value_matches": ["型号"]}},
+            "matched_keywords": {"Pro": {"table_matches": [], "field_matches": [], "value_matches": ["型号"]}},
         },
         {
             "row": {"型号": "ProS", "材料": "钢", "电压": "220V"},
-            "matched_keywords": {"Pro": {"field_matches": [], "value_matches": ["型号"]}},
+            "matched_keywords": {"Pro": {"table_matches": [], "field_matches": [], "value_matches": ["型号"]}},
         },
         {
             "row": {"型号": "Ultra", "光强": "C", "备注": ""},
-            "matched_keywords": {"A": {"field_matches": [], "value_matches": ["光强"]}},
+            "matched_keywords": {"A": {"table_matches": [], "field_matches": [], "value_matches": ["光强"]}},
         },
     ]
 
@@ -261,15 +311,15 @@ def test_extract_field_candidates_prefers_matched_fields_over_common_fields():
     results = [
         {
             "row": {"型号": "Pro2", "材料": "铝", "备注": ""},
-            "matched_keywords": {"铝": {"field_matches": [], "value_matches": ["材料"]}},
+            "matched_keywords": {"铝": {"table_matches": [], "field_matches": [], "value_matches": ["材料"]}},
         },
         {
             "row": {"型号": "ProS", "材料": "铝", "备注": ""},
-            "matched_keywords": {"铝": {"field_matches": [], "value_matches": ["材料"]}},
+            "matched_keywords": {"铝": {"table_matches": [], "field_matches": [], "value_matches": ["材料"]}},
         },
         {
             "row": {"型号": "Ultra", "材料": "钢", "备注": ""},
-            "matched_keywords": {"Ultra": {"field_matches": [], "value_matches": ["型号"]}},
+            "matched_keywords": {"Ultra": {"table_matches": [], "field_matches": [], "value_matches": ["型号"]}},
         },
     ]
 
@@ -283,4 +333,3 @@ def test_search_records_rejects_invalid_mode_before_connecting():
 
 def test_search_records_empty_keyword_returns_without_connecting():
     assert search_records(["", "  "], mode="fuzzy") == []
-

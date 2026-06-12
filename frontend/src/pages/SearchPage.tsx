@@ -160,7 +160,9 @@ export function SearchPage() {
       <div>
         {results.map((result) => (
           <article key={`${result.table_id}-${result.row_id}`} className="result-card">
-            <h2 className="result-card__title">{result.display_name}</h2>
+            <h2 className="result-card__title">
+              <Highlight text={result.display_name} keywords={activeKeywords} />
+            </h2>
             <div className="result-card__meta">
               <span>来源: {result.source_file}</span>
               <span>子表: {result.sheet_name}</span>

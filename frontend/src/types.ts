@@ -1,4 +1,5 @@
 export interface KeywordMatches {
+  table_matches: string[]
   field_matches: string[]
   value_matches: string[]
 }

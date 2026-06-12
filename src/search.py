@@ -47,21 +47,36 @@ def _matching_field_names(
     ]
 
 
+def _matching_table_names(
+    table_meta: dict,
+    keyword: str,
+    mode: SearchMode,
+) -> list[str]:
+    display_name = table_meta.get("display_name") or ""
+    if _cell_matches(display_name, keyword, mode):
+        return [display_name]
+    return []
+
+
 def build_keyword_conditions(
     mapping: list[dict],
     keywords: list[str],
     mode: SearchMode,
+    table_matches_by_keyword: dict[str, list[str]] | None = None,
 ) -> tuple[str, list[str], dict[str, list[str]]]:
     field_matches_by_keyword = {
         keyword_item: _matching_field_names(mapping, keyword_item, mode)
         for keyword_item in keywords
     }
+    table_matches_by_keyword = table_matches_by_keyword or {}
 
     if len(keywords) == 2:
         first_keyword, second_keyword = keywords
         first_fields = field_matches_by_keyword[first_keyword]
         second_fields = field_matches_by_keyword[second_keyword]
-        if bool(first_fields) != bool(second_fields):
+        first_tables = table_matches_by_keyword.get(first_keyword, [])
+        second_tables = table_matches_by_keyword.get(second_keyword, [])
+        if not first_tables and not second_tables and bool(first_fields) != bool(second_fields):
             value_keyword = second_keyword if first_fields else first_keyword
             field_names = first_fields or second_fields
             field_name_set = set(field_names)
@@ -84,6 +99,10 @@ def build_keyword_conditions(
     params: list[str] = []
     for keyword_item in keywords:
         field_matches = field_matches_by_keyword[keyword_item]
+        table_matches = table_matches_by_keyword.get(keyword_item, [])
+        if table_matches:
+            keyword_conditions.append("1=1")
+            continue
         if field_matches:
             keyword_conditions.append("1=1")
             continue
@@ -109,18 +128,23 @@ def row_to_search_result(
     keywords: list[str],
     mode: SearchMode,
     field_matches_by_keyword: dict[str, list[str]],
+    table_matches_by_keyword: dict[str, list[str]] | None = None,
 ) -> dict:
     full_row = {}
     matched_columns = []
     matched_keywords = {}
+    table_matches_by_keyword = table_matches_by_keyword or {}
     for column in mapping:
         value = row_dict.get(column["column"]) or ""
         full_row[column["original"]] = value
         for keyword_item in keywords:
             keyword_matches = matched_keywords.setdefault(
                 keyword_item,
-                {"field_matches": [], "value_matches": []},
+                {"table_matches": [], "field_matches": [], "value_matches": []},
             )
+            table_matches = table_matches_by_keyword.get(keyword_item, [])
+            if table_matches:
+                keyword_matches["table_matches"].extend(table_matches)
             if column["original"] in field_matches_by_keyword[keyword_item]:
                 matched_columns.append(column["original"])
                 keyword_matches["field_matches"].append(column["original"])
@@ -130,11 +154,12 @@ def row_to_search_result(
 
     matched_keywords = {
         keyword_item: {
+            "table_matches": list(dict.fromkeys(matches["table_matches"])),
             "field_matches": list(dict.fromkeys(matches["field_matches"])),
             "value_matches": list(dict.fromkeys(matches["value_matches"])),
         }
         for keyword_item, matches in matched_keywords.items()
-        if matches["field_matches"] or matches["value_matches"]
+        if matches["table_matches"] or matches["field_matches"] or matches["value_matches"]
     }
 
     return {
@@ -212,8 +237,12 @@ def search_records(
             if not mapping:
                 continue
 
+            table_matches_by_keyword = {
+                keyword_item: _matching_table_names(table_meta, keyword_item, mode)
+                for keyword_item in keywords
+            }
             where_clause, params, field_matches_by_keyword = build_keyword_conditions(
-                mapping, keywords, mode
+                mapping, keywords, mode, table_matches_by_keyword=table_matches_by_keyword
             )
 
             sql = (
@@ -234,6 +263,7 @@ def search_records(
                         keywords=keywords,
                         mode=mode,
                         field_matches_by_keyword=field_matches_by_keyword,
+                        table_matches_by_keyword=table_matches_by_keyword,
                     )
                 )
                 if len(results) >= limit:

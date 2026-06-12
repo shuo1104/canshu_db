@@ -2,7 +2,7 @@
 
 ---
 
-后端功能主要分为数据导入（小程序不负责此功能）、搜索（关键词1、关键词2候选和关键词2）和返回数据高亮。 
+后端功能主要分为数据导入（小程序不负责此功能）、搜索（关键词 1、关键词 2 候选和关键词 2）和返回数据高亮。搜索范围包含数据表名称、字段名和单元格内容。
 
 ## 1. 服务地址与端口
 
@@ -85,8 +85,8 @@ GET http://<服务器IP>:4573/api/search?keyword1=Pro2&keyword2=UV
     "row_id": 7,
     "matched_columns": ["设备型号", "光源"],
     "matched_keywords": {
-      "Pro2": {"field_matches": [], "value_matches": ["设备型号"]},
-      "UV": {"field_matches": [], "value_matches": ["光源"]}
+      "Pro2": {"table_matches": [], "field_matches": [], "value_matches": ["设备型号"]},
+      "UV": {"table_matches": [], "field_matches": [], "value_matches": ["光源"]}
     },
     "row": {
       "设备型号": "Pro2",
@@ -99,8 +99,8 @@ GET http://<服务器IP>:4573/api/search?keyword1=Pro2&keyword2=UV
 
 搜索规则：
 
-- `fuzzy`：字段名或单元格内容包含关键词即可。
-- `exact`：字段名或单元格内容等于关键词。
+- `fuzzy`：数据表名称、字段名或单元格内容包含关键词即可。
+- `exact`：数据表名称、字段名或单元格内容等于关键词。
 - 大小写不敏感，和 MySQL 当前 `utf8mb4_unicode_ci` 规则保持一致。
 - `keyword1` 和 `keyword2` 是 AND 关系：同一行必须同时命中两个关键词。
 - 当一个关键词是字段名、另一个关键词是值时，后端会在该字段内筛这个值。
@@ -161,7 +161,8 @@ GET http://<服务器IP>:4573/api/search/candidates?keyword1=Pro2
 
 高亮建议：
 
+- 数据表名称在 `matched_keywords[*].table_matches` 中时，结果标题可高亮。
 - 字段名在 `matched_columns` 中时，整行字段可高亮。
-- 若需要更细的关键词命中信息，可读取 `matched_keywords`。
+- 若需要更细的关键词命中信息，可读取 `matched_keywords` 中的 `table_matches`、`field_matches`、`value_matches`。
 
 ---
