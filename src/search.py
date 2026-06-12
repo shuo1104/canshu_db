@@ -20,9 +20,11 @@ def list_registered_tables(db_config: MySQLConfig = DB_CONFIG) -> list[dict]:
 
 
 def _cell_matches(value: str, keyword: str, mode: SearchMode) -> bool:
+    normalized_value = value.casefold()
+    normalized_keyword = keyword.casefold()
     if mode == "exact":
-        return value == keyword
-    return keyword in value
+        return normalized_value == normalized_keyword
+    return normalized_keyword in normalized_value
 
 
 def _normalize_keywords(keyword: str | Sequence[str]) -> list[str]:
@@ -50,12 +52,38 @@ def build_keyword_conditions(
     keywords: list[str],
     mode: SearchMode,
 ) -> tuple[str, list[str], dict[str, list[str]]]:
+    field_matches_by_keyword = {
+        keyword_item: _matching_field_names(mapping, keyword_item, mode)
+        for keyword_item in keywords
+    }
+
+    if len(keywords) == 2:
+        first_keyword, second_keyword = keywords
+        first_fields = field_matches_by_keyword[first_keyword]
+        second_fields = field_matches_by_keyword[second_keyword]
+        if bool(first_fields) != bool(second_fields):
+            value_keyword = second_keyword if first_fields else first_keyword
+            field_names = first_fields or second_fields
+            field_name_set = set(field_names)
+            restricted_columns = [
+                column for column in mapping if column["original"] in field_name_set
+            ]
+            column_conditions = []
+            params: list[str] = []
+            for column in restricted_columns:
+                column_sql = quote_identifier(column["column"])
+                if mode == "exact":
+                    column_conditions.append(f"{column_sql} = %s")
+                    params.append(value_keyword)
+                else:
+                    column_conditions.append(f"{column_sql} LIKE %s")
+                    params.append(f"%{value_keyword}%")
+            return f"({' OR '.join(column_conditions)})", params, field_matches_by_keyword
+
     keyword_conditions = []
     params: list[str] = []
-    field_matches_by_keyword = {}
     for keyword_item in keywords:
-        field_matches = _matching_field_names(mapping, keyword_item, mode)
-        field_matches_by_keyword[keyword_item] = field_matches
+        field_matches = field_matches_by_keyword[keyword_item]
         if field_matches:
             keyword_conditions.append("1=1")
             continue
@@ -126,7 +154,7 @@ def extract_field_candidates(
     results: list[dict],
     max_candidates: int = 50,
 ) -> list[str]:
-    """Return de-duplicated row field names ordered by frequency and first sighting."""
+    """Return row field names ordered by match relevance, frequency, and first sighting."""
     field_stats: dict[str, dict[str, int]] = {}
     first_index = 0
     for result in results:
@@ -137,9 +165,24 @@ def extract_field_candidates(
                 first_index += 1
             field_stats[field_name]["count"] += 1
 
+        matched_keywords = result.get("matched_keywords") or {}
+        for matches in matched_keywords.values():
+            for field_name in matches.get("value_matches", []):
+                if field_name in field_stats:
+                    field_stats[field_name]["match_count"] = (
+                        field_stats[field_name].get("match_count", 0) + 1
+                    )
+            for field_name in matches.get("field_matches", []):
+                if field_name in field_stats:
+                    field_stats[field_name]["field_match_count"] = (
+                        field_stats[field_name].get("field_match_count", 0) + 1
+                    )
+
     ordered_fields = sorted(
         field_stats,
         key=lambda item: (
+            -field_stats[item].get("match_count", 0),
+            -field_stats[item].get("field_match_count", 0),
             -field_stats[item]["count"],
             field_stats[item]["first_index"],
         ),

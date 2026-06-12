@@ -36,7 +36,7 @@ services:
       APS_DB_PASSWORD: ${APS_DB_PASSWORD:-aftersales_password}
       APS_DB_CHARSET: utf8mb4
     ports:
-      - "${APP_PORT:-8501}:8501"
+      - "${APP_PORT:-4573}:4573"
     volumes:
       - ./数据库_副本:/app/数据库_副本:ro
 

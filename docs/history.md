@@ -1,5 +1,13 @@
 # 项目历史
 
+## 2026-06-12 FastAPI + React 架构迁移
+
+- **Spec summary**: 将原有 Streamlit 网页应用拆分为 FastAPI 后端 + React 前端。后端暴露 JSON API（搜索、导入）供小程序和前端调用；前端使用 React + TypeScript + Vite 实现搜索页和导入页，开发时通过 Vite proxy 调用后端，生产/容器环境由 FastAPI 直接托管前端构建产物。
+- **Key decisions**: 后端复用现有 `src/search.py` 和 `src/importer.py` 的同步函数，不引入异步数据库改造；新增 `/api/import/analyze`、`/api/import/preview`、`/api/import` 替代原有 Streamlit 上传导入；前端用 React Router 管理搜索页和导入页；Dockerfile 改为 Node 构建前端 + Python 运行时的多阶段构建；CORS 默认允许所有来源，生产可通过 `ALLOWED_ORIGINS` 收紧。
+- **Plan outcome**: fully completed。新建 `src/api.py`、`tests/test_api.py`、`frontend/` 完整目录；更新 `pyproject.toml`/`uv.lock`、`Dockerfile`（多阶段）、`docker-compose.yml`、`.env.example`、`.dockerignore`、`README.md`、`docs/ops.md`、`docs/references.md`。
+- **Verification evidence**: `uv run pytest tests/ -v` 通过，24 个测试全部 pass；`cd frontend && npm run build` 成功生成 `frontend/dist/index.html`；`docker compose up --build -d` 成功构建并启动；`curl http://localhost:8000/api/health` 返回 `{"status":"ok"}`；`curl -I http://localhost:8000/` 返回 HTTP 200 且 Content-Type 为 `text/html`；`curl "http://localhost:8000/api/search?keyword1=test"` 返回 `[]`；`curl -I http://localhost:8000/docs` 返回 HTTP 200。前端搜索高亮与导入流程需在浏览器有真实数据后手动验收。
+- **Related commits**: not a git repository in this workspace.
+
 ## 2026-06-12 Web 上传导入与关键词 2 字段候选
 
 - **Spec summary**: 将 Web 导入入口从服务器/容器内目录选择改为上传 `.xls` / `.xlsx` 文件；搜索时用户输入关键词 1 后，从关键词 1 命中的多表完整行中提取字段名候选，点击候选可填入关键词 2 并继续按同一行 AND 关系搜索。

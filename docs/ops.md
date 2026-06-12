@@ -20,7 +20,13 @@ docker compose logs -f mysql
 默认访问地址：
 
 ```text
-http://localhost:8501
+http://localhost:4573
+```
+
+接口文档：
+
+```text
+http://localhost:4573/docs
 ```
 
 ## 数据持久化
@@ -55,7 +61,7 @@ docker compose up -d
 
 ### 2. 导入一个子表
 
-在「数据导入」模式中：
+在「数据导入」页面中：
 
 1. 上传 `.xls` 或 `.xlsx` 文件。
 2. 选择本次要导入的一个 sheet。
@@ -65,11 +71,9 @@ docker compose up -d
 
 如果需要导入同一个 Excel 文件里的多个 sheet，请重复以上步骤，并为每个 sheet 使用不同的数据表名称。
 
-SQLite 旧数据库不会自动迁移；部署 MySQL 后请从 Excel 源文件重新导入。
-
 ### 3. 验证导入结果
 
-在「搜索」模式中输入「关键词 1」，确认页面能返回完整行信息并高亮命中内容。页面会从关键词 1 的命中结果中提取字段名候选，可以点击候选填入「关键词 2」继续缩小结果。关键词会同时搜索字段名和单元格内容；两个关键词是同一行 AND 匹配。
+在首页「搜索」中输入「关键词 1」，确认页面能返回完整行信息并高亮命中内容。页面会从关键词 1 的命中结果中提取字段名候选，可以点击候选填入「关键词 2」继续缩小结果。关键词会同时搜索字段名和单元格内容；两个关键词是同一行 AND 匹配。
 
 也可以进入 MySQL 查看已登记的数据表：
 
@@ -92,6 +96,25 @@ docker compose exec app uv run python scripts/import_data.py \
 ```
 
 `--header-row` 使用从 0 开始的行号。加 `--replace` 可以替换同名数据表。
+
+## 前端更新
+
+如果只是修改前端代码，可以不重建 Python 依赖：
+
+```bash
+cd frontend
+npm install
+npm run build
+```
+
+本地开发时使用热更新：
+
+```bash
+cd frontend
+npm run dev
+```
+
+生产镜像会在构建阶段自动执行 `npm run build`，并把产物复制到 `frontend/dist`，由 FastAPI 托管。
 
 ## 回滚
 
@@ -134,3 +157,9 @@ docker compose up --build -d
 - Web 搜索适合输入部分关键词，会同时匹配字段名和单元格内容。
 - 如果输入了两个关键词，确认这两个关键词确实出现在同一行中；需要扩大范围时先清空关键词 2。
 - 如果关键词 2 字段候选为空，说明关键词 1 没有命中任何已导入行，或命中行没有可展示字段。
+
+### 前端页面空白或 404
+
+- 确认 `frontend/dist/index.html` 存在（Docker 镜像构建阶段会生成）。
+- 检查 `docker compose logs app` 中是否有前端构建失败或 `StaticFiles` 挂载错误。
+- 直接访问 `http://localhost:4573/api/health` 确认后端运行正常。

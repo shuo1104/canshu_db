@@ -1,6 +1,6 @@
 """Optional non-interactive MySQL import entry point.
 
-Primary import is the Streamlit UI:
+Primary import is the FastAPI + React web UI:
     docker compose up --build
 
 CLI example:

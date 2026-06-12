@@ -6,7 +6,7 @@
 - Dynamic MySQL storage: each import creates one child table with generated safe column names and records its original metadata in `data_tables`.
 - Cross-table search: keyword search scans registered child tables and returns the complete matched row with source context and highlighted matches.
 - Keyword field candidates: keyword 1 results are used to extract row field names that can be selected as keyword 2.
-- Docker deployment: Docker Compose runs a MySQL service and a Streamlit app service with persistent MySQL volume storage.
+- Docker deployment: Docker Compose runs a MySQL service and a FastAPI app service that serves the React build with persistent MySQL volume storage.
 
 ## Main Code Modules
 
@@ -14,27 +14,30 @@
 - `src/db.py`: MySQL connection handling, `data_tables` metadata schema, safe SQL identifier helpers, child-table creation, row insertion, and table registration.
 - `src/importer.py`: Excel path/file-like reading, sheet listing, first-three-row preview, header-to-column mapping, and selected-sheet import orchestration.
 - `src/search.py`: registered table discovery, search over every child table, and field-candidate extraction from search results.
-- `src/app.py`: Streamlit UI for upload import and search workflows, including keyword 2 candidate selection and highlighted search result rendering.
+- `src/api.py`: FastAPI routes for search, candidate fields, Excel preview/import, and serving the React frontend.
+- `frontend/src`: React pages and API client for upload import and search workflows.
 - `scripts/import_data.py`: optional explicit-argument CLI import path for automation.
-- `docker-compose.yml`: MySQL + Streamlit service orchestration.
-- `Dockerfile`: Streamlit app container build.
+- `docker-compose.yml`: MySQL + FastAPI service orchestration.
+- `Dockerfile`: multi-stage React build and FastAPI runtime container.
 
 ## Data Flow
 
 ```text
 Browser-uploaded Excel file + selected sheet
+    -> frontend React import page
+    -> src.api import endpoints
     -> src.importer preview/header selection
     -> src.db MySQL child table + data_tables metadata
     -> src.search dynamic table scan
     -> src.search keyword 2 field candidates
-    -> src.app full-row highlighted result display
+    -> frontend React highlighted result display
 ```
 
 ## Deployment Flow
 
 ```text
 browser
-    -> app container (Streamlit :8501)
+    -> app container (FastAPI :4573 serving React dist)
     -> mysql container (:3306)
     -> mysql_data Docker volume
 ```

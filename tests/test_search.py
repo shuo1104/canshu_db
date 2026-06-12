@@ -5,7 +5,6 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from src.app import highlight_text
 from src.db import make_column_mapping, make_table_name, quote_identifier
 from src.importer import (
     get_data_rows_below_header,
@@ -136,14 +135,35 @@ def test_build_keyword_conditions_uses_mysql_placeholders_for_values():
     assert field_matches == {"Pro": [], "光强A": []}
 
 
+def test_field_name_matching_is_case_insensitive_like_mysql_collation():
+    mapping = make_column_mapping(["Model", "Power"])
+    where_clause, params, field_matches = build_keyword_conditions(
+        mapping, ["model"], "fuzzy"
+    )
+
+    assert where_clause == "1=1"
+    assert params == []
+    assert field_matches == {"model": ["Model"]}
+
+
 def test_field_name_match_short_circuits_that_keyword():
     where_clause, params, field_matches = build_keyword_conditions(
         sample_mapping(), ["型号", "Pro2"], "fuzzy"
     )
 
-    assert where_clause == "1=1 AND (`c001` LIKE %s OR `c002` LIKE %s OR `c003` LIKE %s)"
-    assert params == ["%Pro2%", "%Pro2%", "%Pro2%"]
+    assert where_clause == "(`c001` LIKE %s OR `c002` LIKE %s)"
+    assert params == ["%Pro2%", "%Pro2%"]
     assert field_matches == {"型号": ["型号", "型号_2"], "Pro2": []}
+
+
+def test_value_then_field_name_restricts_value_to_matching_fields():
+    where_clause, params, field_matches = build_keyword_conditions(
+        sample_mapping(), ["Pro2", "型号"], "fuzzy"
+    )
+
+    assert where_clause == "(`c001` LIKE %s OR `c002` LIKE %s)"
+    assert params == ["%Pro2%", "%Pro2%"]
+    assert field_matches == {"Pro2": [], "型号": ["型号", "型号_2"]}
 
 
 def test_exact_field_name_match_uses_equality_semantics():
@@ -180,15 +200,80 @@ def test_row_to_search_result_reports_field_and_value_matches():
     }
 
 
+def test_row_to_search_result_reports_case_insensitive_value_matches():
+    mapping = make_column_mapping(["Model", "Power"])
+    _, _, field_matches = build_keyword_conditions(mapping, ["pro2"], "fuzzy")
+
+    result = row_to_search_result(
+        table_meta=sample_table_meta(),
+        mapping=mapping,
+        row_dict={"id": 1, "c001": "Pro2", "c002": "400W"},
+        keywords=["pro2"],
+        mode="fuzzy",
+        field_matches_by_keyword=field_matches,
+    )
+
+    assert result["matched_keywords"] == {
+        "pro2": {"field_matches": [], "value_matches": ["Model"]},
+    }
+    assert result["matched_columns"] == ["Model"]
+
+
+def test_exact_value_matching_is_case_insensitive_like_mysql_collation():
+    mapping = make_column_mapping(["Model"])
+    _, _, field_matches = build_keyword_conditions(mapping, ["pro2"], "exact")
+
+    result = row_to_search_result(
+        table_meta=sample_table_meta(),
+        mapping=mapping,
+        row_dict={"id": 1, "c001": "Pro2"},
+        keywords=["pro2"],
+        mode="exact",
+        field_matches_by_keyword=field_matches,
+    )
+
+    assert result["matched_keywords"] == {
+        "pro2": {"field_matches": [], "value_matches": ["Model"]},
+    }
+
+
 def test_extract_field_candidates_orders_by_frequency_then_first_seen():
     results = [
-        {"row": {"型号": "Pro2", "光强": "A", "材料": "铝"}},
-        {"row": {"型号": "ProS", "材料": "钢", "电压": "220V"}},
-        {"row": {"型号": "Ultra", "光强": "C", "备注": ""}},
+        {
+            "row": {"型号": "Pro2", "光强": "A", "材料": "铝"},
+            "matched_keywords": {"Pro": {"field_matches": [], "value_matches": ["型号"]}},
+        },
+        {
+            "row": {"型号": "ProS", "材料": "钢", "电压": "220V"},
+            "matched_keywords": {"Pro": {"field_matches": [], "value_matches": ["型号"]}},
+        },
+        {
+            "row": {"型号": "Ultra", "光强": "C", "备注": ""},
+            "matched_keywords": {"A": {"field_matches": [], "value_matches": ["光强"]}},
+        },
     ]
 
     assert extract_field_candidates(results) == ["型号", "光强", "材料", "电压", "备注"]
     assert extract_field_candidates(results, max_candidates=3) == ["型号", "光强", "材料"]
+
+
+def test_extract_field_candidates_prefers_matched_fields_over_common_fields():
+    results = [
+        {
+            "row": {"型号": "Pro2", "材料": "铝", "备注": ""},
+            "matched_keywords": {"铝": {"field_matches": [], "value_matches": ["材料"]}},
+        },
+        {
+            "row": {"型号": "ProS", "材料": "铝", "备注": ""},
+            "matched_keywords": {"铝": {"field_matches": [], "value_matches": ["材料"]}},
+        },
+        {
+            "row": {"型号": "Ultra", "材料": "钢", "备注": ""},
+            "matched_keywords": {"Ultra": {"field_matches": [], "value_matches": ["型号"]}},
+        },
+    ]
+
+    assert extract_field_candidates(results, max_candidates=3) == ["材料", "型号", "备注"]
 
 
 def test_search_records_rejects_invalid_mode_before_connecting():
@@ -199,10 +284,3 @@ def test_search_records_rejects_invalid_mode_before_connecting():
 def test_search_records_empty_keyword_returns_without_connecting():
     assert search_records(["", "  "], mode="fuzzy") == []
 
-
-def test_highlight_text_escapes_html_before_marking():
-    highlighted = highlight_text("光强A<script>", ["光强A"], "fuzzy")
-
-    assert "<script>" not in highlighted
-    assert "&lt;script&gt;" in highlighted
-    assert '<mark class="search-hit">光强A</mark>' in highlighted
