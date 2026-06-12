@@ -1,0 +1,43 @@
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_password}
+      MYSQL_DATABASE: ${APS_DB_NAME:-aftersales}
+      MYSQL_USER: ${APS_DB_USER:-aftersales}
+      MYSQL_PASSWORD: ${APS_DB_PASSWORD:-aftersales_password}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$${MYSQL_USER:-aftersales} -p$${MYSQL_PASSWORD:-aftersales_password} --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      APS_DATA_DIR: /app/数据库_副本
+      APS_DB_HOST: mysql
+      APS_DB_PORT: 3306
+      APS_DB_NAME: ${APS_DB_NAME:-aftersales}
+      APS_DB_USER: ${APS_DB_USER:-aftersales}
+      APS_DB_PASSWORD: ${APS_DB_PASSWORD:-aftersales_password}
+      APS_DB_CHARSET: utf8mb4
+    ports:
+      - "${APP_PORT:-8501}:8501"
+    volumes:
+      - ./数据库_副本:/app/数据库_副本:ro
+
+volumes:
+  mysql_data:
