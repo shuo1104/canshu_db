@@ -21,6 +21,7 @@ services:
       retries: 20
 
   app:
+    container_name: canshu_db
     build: .
     restart: unless-stopped
     depends_on:
